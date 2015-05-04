@@ -638,6 +638,28 @@ describe('fetcher', function() {
     });
   });
 
+  describe('bootstrapData', function() {
+    var attr, listingModel, bootstrapMockData;
+
+    beforeEach(function () {
+      attr = {id: 1, name: 'foobar', location: 'San Francisco'};
+      listingModel = new Listing(attr, {app: this.app});
+      bootstrapMockData = {'model':{'summary':{'model':'user','id':'1'},'data':{'name':'foobar', 'location': 'San Francisco'}}};
+    });
+
+    it('should call the callback function', function (done) {
+      var getModelOrCollectionForSpecSpy = sinon.spy(fetcher, 'getModelOrCollectionForSpec');
+
+      var bootstrapData = fetcher.bootstrapData(bootstrapMockData, function(results) {
+        results.should.be.an('object');
+        results.should.have.property('model');
+        results['model'].attributes.should.deep.equal(bootstrapMockData.model.data);
+        done();
+      });
+    });
+
+  });
+
   describe('retrieveModels', function() {
     var modelAttrs;
 
@@ -655,55 +677,18 @@ describe('fetcher', function() {
     });
   });
 
-  describe('checkFresh', function() {
-    describe('didCheckFresh', function() {
-      beforeEach(function() {
-        fetcher.checkedFreshTimestamps = {};
-        this.spec = {
-          model: 'foobutt',
-          params: {}
-        };
-      });
+  describe('getCollectionForSpec', function () {
+    var spec, params;
 
-      it("should store it properly", function() {
-        var key;
-
-        fetcher.didCheckFresh(this.spec);
-        key = fetcher.checkedFreshKey(this.spec);
-        fetcher.checkedFreshTimestamps[key].should.be.ok;
-      });
+    beforeEach(function () {
+      params = { name: 'test' }
+      spec = { collection: 'Listings', params: params };
     });
 
-    describe('shouldCheckFresh', function() {
-      beforeEach(function() {
-        fetcher.checkedFreshTimestamps = {};
-        this.spec = {
-          model: 'foobutt',
-          params: {}
-        };
-      });
-
-      it("should return true if timestamp doesn't exist", function() {
-        fetcher.shouldCheckFresh(this.spec).should.be.true;
-      });
-
-      it("should return true if timestamp exists and is greater than 'checkedFreshRate' ago", function() {
-        var key, now;
-
-        key = fetcher.checkedFreshKey(this.spec);
-        now = new Date().getTime();
-        fetcher.checkedFreshTimestamps[key] = now - fetcher.checkedFreshRate - 1000;
-        fetcher.shouldCheckFresh(this.spec).should.be.true;
-      });
-
-      it("should return false if timestamp exists and is less than 'checkedFreshRate' ago", function() {
-        var key, now;
-
-        key = fetcher.checkedFreshKey(this.spec);
-        now = new Date().getTime();
-        fetcher.checkedFreshTimestamps[key] = now - 1;
-        fetcher.shouldCheckFresh(this.spec).should.be.false;
-      });
+    it('the options should include a `params` attribute for the collection store', function () {
+      var result = fetcher.getCollectionForSpec(spec);
+      expect(result.params).to.deep.equal(params);
+      expect(result.options.params).to.deep.equal(params);
     });
   });
 });

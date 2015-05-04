@@ -9,51 +9,30 @@ var _ = require('underscore'),
     Backbone = require('backbone'),
     async = require('async'),
     isServer = (typeof window === 'undefined'),
-    BaseView,
-    $;
+    BaseView;
 
 if (!isServer) {
   Backbone.$ = window.$ || require('jquery');
-  $ = Backbone.$;
 }
-
-function noop() {}
 
 module.exports = BaseView = Backbone.View.extend({
   constructor: function(options) {
-    var obj;
-
     this.options = _.extend( this.options || {}, options || {} );
 
     this.parseOptions(options);
-
     this.name = this.name || this.app.modelUtils.underscorize(this.constructor.id || this.constructor.name);
 
     // parseOptions deals w/ models and collections, but the BaseView will override those changes
     Backbone.View.call(this, _.omit(options, ['model', 'collection']));
 
-    if (this.postInitialize) {
-      console.warn('`postInitialize` is deprecated, please use `initialize`');
-      this.postInitialize();
-    }
-
-    if ((obj = this.options.model || this.options.collection) && this.renderOnRefresh) {
-      obj.on('refresh', this.render, this);
-    }
-
     this.render = this.render.bind(this);
   },
-
-  /**
-   * Whether or not to re-render this view when the model or collection
-   * emits a 'refresh' event. Used with 'model|collection.checkFresh()'.
-   */
-  renderOnRefresh: false,
 
   parseOptions: function(options) {
     /**
      * Populate `this.options` and alias as `options`.
      */
+    var obj;
     options = _.extend(this.options, options || {});
 
     if (options.app != null) {
@@ -66,7 +45,7 @@ module.exports = BaseView = Backbone.View.extend({
       this.parentView = options.parentView;
     }
 
-    options = BaseView.parseModelAndCollection(this.app.modelUtils, options);
+    options = BaseView.parseModelAndCollection(this.app.modelUtils, _.extend({ parse: true }, options));
     this.model = options.model;
     this.collection = options.collection;
   },
@@ -320,12 +299,12 @@ module.exports = BaseView = Backbone.View.extend({
   /**
    * To be overridden by subclasses.
    */
-  preRender: noop,
+  preRender: _.noop,
 
   /**
    * To be overridden by subclasses.
    */
-  postRender: noop,
+  postRender: _.noop,
 
   setLoading: function(loading) {
     this.$el.toggleClass('loading', loading);
@@ -333,7 +312,7 @@ module.exports = BaseView = Backbone.View.extend({
   },
 
   attachOrRender: function(element, parentView) {
-    var $el = $(element);
+    var $el = Backbone.$(element);
 
     this.parentView = parentView;
     this.viewing = true;
@@ -388,7 +367,7 @@ module.exports = BaseView = Backbone.View.extend({
     // Remove all child views in case we are re-rendering through
     // manual .render() or 'refresh' being triggered on the view.
     this.removeChildViews();
-    BaseView.attach(this.app, this, function(views) {
+    BaseView.getChildViews(this.app, this, function(views) {
       _baseView.childViews = views;
     });
   },
@@ -400,6 +379,11 @@ module.exports = BaseView = Backbone.View.extend({
   },
 
   remove: function() {
+    // Remove reference to this view from its parentView
+    if (this.parentView && this.parentView.childViews) {
+      this.parentView.childViews = _.without(this.parentView.childViews, this);
+    }
+
     this.removeChildViews();
     this.childViews = null;
     this.parentView = null;
@@ -439,6 +423,15 @@ BaseView.getView = function(viewName, entryPath, callback) {
   }
 };
 
+BaseView.createChildView = function (ViewClass, options, $el, parentView, cb) {
+  if (!$el.data('view-attached')) {
+    var view = BaseView.attachNewChildView(ViewClass, options, $el, parentView);
+    cb(null, view);
+  } else {
+    cb(null, null);
+  }
+};
+
 BaseView.getViewOptions = function ($el) {
   var parsed,
     options = $el.data();
@@ -456,13 +449,20 @@ BaseView.getViewOptions = function ($el) {
   return options;
 };
 
-BaseView.attach = function(app, parentView, callback) {
+BaseView.attachNewChildView = function(ViewClass, options, $el, parentView) {
+  var view = new ViewClass(options);
+  view.attachOrRender($el, parentView);
+
+  return view;
+};
+
+BaseView.getChildViews = function(app, parentView, callback) {
   var scope = parentView ? parentView.$el : null,
-      list = $('[data-view]', scope).toArray();
+      list = Backbone.$('[data-view]', scope).toArray();
 
   async.map(list, function(el, cb) {
     var $el, options, viewName, fetchSummary;
-    $el = $(el);
+    $el = Backbone.$(el);
     if (!$el.data('view-attached')) {
       options = BaseView.getViewOptions($el);
       options.app = app;
@@ -473,9 +473,7 @@ BaseView.attach = function(app, parentView, callback) {
       app.fetcher.hydrate(fetchSummary, { app: app }, function (err, results) {
         options = _.extend(options, results);
         BaseView.getView(viewName, app.options.entryPath, function(ViewClass) {
-          var view = new ViewClass(options);
-          view.attachOrRender($el, parentView);
-          cb(null, view);
+          BaseView.createChildView(ViewClass, options, $el, parentView, cb);
         });
       });
     } else {
@@ -491,7 +489,7 @@ BaseView.parseModelAndCollection = function(modelUtils, options) {
   if (options.model != null) {
     if (!(options.model instanceof Backbone.Model) && options.model_name) {
       options.model = modelUtils.getModel(options.model_name, options.model, {
-        parse: true,
+        parse: !!options.parse,
         app: options.app
       });
     }
@@ -500,8 +498,15 @@ BaseView.parseModelAndCollection = function(modelUtils, options) {
   }
 
   if (options.collection != null) {
+    if (!(options.collection instanceof Backbone.Collection) && options.collection_name) {
+      options.collection = modelUtils.getCollection(options.collection_name, options.collection, {
+        parse: !!options.parse,
+        app: options.app,
+        params: options.collection_params
+      });
+    }
     options.collection_name = options.collection_name || modelUtils.modelName(options.collection.constructor);
-    options.collection_params = options.collection.params;
+    options.collection_params = options.collection_params || options.collection.params;
   }
 
   return options;
@@ -544,6 +549,6 @@ BaseView.extractFetchSummary = function (modelUtils, options) {
  * Noops on the server, because they do DOM stuff.
  */
 if (typeof window === 'undefined') {
-  BaseView.prototype._ensureElement = noop;
-  BaseView.prototype.delegateEvents = noop;
+  BaseView.prototype._ensureElement = _.noop;
+  BaseView.prototype.delegateEvents = _.noop;
 }

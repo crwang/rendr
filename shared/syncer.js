@@ -21,10 +21,11 @@ var _ = require('underscore'),
 
 if (isServer) {
   // hide it from requirejs since it's server only
-  var serverOnly_qs = 'qs';
+  var serverOnly_qs = 'qs2';
   var qs = require(serverOnly_qs);
 } else {
-  Backbone.$ = window.$ || require('jquery');
+  var $ = window.$ || require('jquery');
+  Backbone.$ = $;
 }
 
 var syncer = module.exports;
@@ -51,7 +52,7 @@ function clientSync(method, model, options) {
       };
       error(resp);
     }
-  };
+  }
   return Backbone.sync(method, model, options);
 }
 
@@ -136,47 +137,6 @@ syncer.formatClientUrl = function(url, api) {
   }
   prefix += '/-';
   return prefix + url;
-};
-
-/**
- * This is used to fire off a 'fetch', compare the results to the data we have,
- * and then trigger a 'refresh' event if the data has changed.
- *
- * Happens only client-side.
- */
-syncer.checkFresh = function checkFresh() {
-  var url;
-
-  this.app.trigger('checkFresh:start');
-
-  // Lame: have to lazy-require to prevent circular dependency.
-  // It is circular dep
-  // hide it from requirejs since it's optional/lazy-loaded
-  url = this.getUrl(null, true);
-
-  $.getJSON(url, this.params, function(resp) {
-    var data, differs;
-
-    // The second argument 'false' tells 'parse()' not to modify the instance.
-    data = this.parse(resp, false);
-    differs = this.objectsDiffer(data, this.toJSON());
-    this.trigger('checkFresh:end', differs);
-    if (differs) {
-      if (this.app.modelUtils.isModel(this)) {
-        this.set(data, {
-          silent: true
-        });
-      } else {
-        this.reset(data, {
-          parse: true,
-          silent: true
-        });
-      }
-      // We manually store the updated data.
-      this.store();
-      this.trigger('refresh');
-    }
-  }.bind(this));
 };
 
 /**
