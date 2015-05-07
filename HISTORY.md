@@ -1,3 +1,66 @@
+# 1.0.3
+## 2015-03-27
+* Bug fix for Require.js  Needs to statically analyze the include in shared/app.js for the router.
+
+# 1.0.2
+## 2015-03-26
+* Fixes / Updates to make Rendr work with require.js
+* added ability to pass in template adapter instance
+ * move towards pulling the view layer out
+ * allows watchify / browserify to rebuild single files rather than the entire package
+
+# 1.0.1
+## 2015-02-26
+* upgrade dependencies
+ * express
+ * underscore
+ * rendr-handlebars
+ * chai
+ * sinon-chai
+* fix a few cases where `window.$` was being accessed instead of `Backbone.$`
+* fix for collection store when lazy-loading a collection (two collections were in the store, now only one)
+* fix for restAdapter that was putting `?` when req.query was an empty object
+
+# 1.0.0
+## 2015-02-11
+* upgrade to express 4.11.0
+  * added `errorhandler` instead of using the express.errorHandler that is deprecated
+* *breaking* dropped node 0.8 support
+* *breaking* dropped express 3.x support
+* added support for node 0.12
+* removed noop definition in favor of _.noop
+* *breaking* removed postInitialization callbacks
+* fixed issue with collection where a re-fetch call will override parameters with an empty object
+* v8 runtime optimizations
+* fixed the way view keeps track of it's childViews
+* updated all devDependencies
+* updated request to use latest version - security fix
+* added .jshint
+* moved from `qs` to `qs2` to support `q[]=1&q[]=2` parameters for arrays by default
+* *breaking* removed `match` function from the server
+* *breaking* removed `checkFresh` - changed to use `expireSeconds` for the store so the store can check instead
+
+# 0.5.2
+## 2015-01-9
+* parseModelAndCollection optionally parses sub-models / sub-collections
+* fix for the re-rendering the view on a `refresh` event when the view is hydrated
+* upgrade to dev dependency for rendr-handlebars to 0.2.2
+* parse collections into an instance of a collection if it isn't already
+
+# 0.5.1
+## 2014-12-11
+* Changed how views are attached to the document, now calls the `render` method when given the appropriate flag.
+* Added tests around base/view.js
+* Added a `clear` method to the model and collection stores
+* Fixed model collection from the store, will no longer create new instances of the model
+* Added the ability to pass a JSON object to `fetch_params` when lazy loading views. This way we can pass multiple parameters to those models / collections.
+* Upgraded `qs` dependency
+* Fixed query string attribute when loading collections, now will properly send data on client and server.
+* Fix in the view's parse options to not override the model / collection attribute after they've been re-inflated.
+* Added fix for the `parse` method to allow for sub-models / sub-collections
+* Upgrade to Backbone 1.1.2
+* Added support for nested params in ServerRouter
+
 # 0.5.0
 ## 2014-02-25
 * [deprecation] use `initialize` instead of `postInitialize`

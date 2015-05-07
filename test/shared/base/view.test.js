@@ -1,4 +1,6 @@
-var should = require('chai').should(),
+var chai = require('chai')
+    should = chai.should(),
+    expect = chai.expect,
     sinon = require('sinon'),
     _ = require('underscore'),
     BaseModel = require('../../../shared/base/model'),
@@ -6,7 +8,11 @@ var should = require('chai').should(),
     BaseView = require('../../../shared/base/view'),
     Backbone = require('backbone'),
     ModelUtils = require('../../../shared/modelUtils'),
-    modelUtils = new ModelUtils();
+    modelUtils = new ModelUtils(),
+    window = require('jsdom').jsdom().parentWindow,
+    $ = require('jquery')(window);
+
+Backbone.$ = $;
 
 describe('BaseView', function() {
   beforeEach(function() {
@@ -165,10 +171,10 @@ describe('BaseView', function() {
       view.parentView.should.equal('test');
     });
 
-    it('should invoke parseModelAndCollection', function () {
+    it('should invoke parseModelAndCollection with the parse option', function () {
       var spy = sinon.spy(BaseView, 'parseModelAndCollection');
       view.parseOptions({ app: this.app });
-      spy.should.have.been.called.once;
+      spy.should.have.been.calledWith(this.app.modelUtils, { app: this.app, parse: true }).once;
       BaseView.parseModelAndCollection.restore()
     });
 
@@ -271,29 +277,37 @@ describe('BaseView', function() {
         });
 
         it('it should create an instance of the model', function () {
-          var result = BaseView.parseModelAndCollection(modelUtils, { model: modelData, model_name: 'MyModel', app: this.app });
+          var result = BaseView.parseModelAndCollection(modelUtils, { model: modelData, model_name: 'MyModel', app: this.app, parse: true });
 
           result.should.deep.equal({
             model_name: 'MyModel',
             model_id: 101,
             model: modelInstance,
-            app: this.app
+            app: this.app,
+            parse: true
+          });
+        });
+
+        context('options do not contain parse: true', function () {
+          it('it should not pass parse: true to modelUtils', function () {
+            modelUtilsMock.expects("getModel").withArgs('MyModel', modelData, { parse: false, app: this.app }).returns(modelInstance);
+            BaseView.parseModelAndCollection(modelUtils, { model: modelData, model_name: 'MyModel', app: this.app });
           });
         });
       });
-
     });
 
     context('there is a collection', function () {
       var MyCollection = BaseCollection.extend({}),
-          collection;
+          collection,
+          params = { test: 'test' };
       MyCollection.id = 'MyCollection';
 
       context ('it is an instance of a collection', function () {
         beforeEach(function () {
           collection = new MyCollection([], {
             app: this.app,
-            params: { test: 'test' }
+            params: params
           });
         });
 
@@ -310,6 +324,38 @@ describe('BaseView', function() {
         });
       });
 
+      context('contains an array of model data to build a collection', function () {
+        var modelUtilsMock;
+
+        beforeEach(function() {
+          collection = new MyCollection([], { app: this.app, params: { test: 'test' } });
+          modelUtilsMock = sinon.mock(modelUtils);
+          modelUtilsMock.expects("getCollection").withArgs('MyCollection', [], { parse: true, app: this.app, params: params }).returns(collection);
+        });
+
+        afterEach(function() {
+          modelUtilsMock.restore();
+        });
+
+        it('it should create an instance of the collection', function () {
+          var result = BaseView.parseModelAndCollection(modelUtils, { collection: [], collection_name: 'MyCollection', app: this.app, collection_params: params, parse: true });
+
+          result.should.deep.equal({
+            collection_name: 'MyCollection',
+            collection_params: params,
+            collection: collection,
+            app: this.app,
+            parse: true
+          });
+        });
+
+        context('options do not contain parse: true', function () {
+          it('it should not pass parse: true to modelUtils', function () {
+            modelUtilsMock.expects("getCollection").withArgs('MyCollection', [], { parse: false, app: this.app, params: params }).returns(collection);
+            BaseView.parseModelAndCollection(modelUtils, { collection: [], collection_name: 'MyCollection', app: this.app, collection_params: params });
+          });
+        });
+      });
     });
   });
 
@@ -459,6 +505,104 @@ describe('BaseView', function() {
 
       fetchSummary = BaseView.extractFetchSummary(modelUtils, myViewInstance.options);
       fetchSummary.should.deep.equal(expectedFetchSummary);
+    });
+  });
+
+  describe('remove', function () {
+    beforeEach(function() {
+      this.app = {
+        modelUtils: modelUtils,
+        router: { currentView: null }
+      };
+    });
+
+    it('should remove the reference to this view from its parentView', function () {
+      var bottomView, childViews, topView;
+
+      topView = new this.MyTopView({app: this.app});
+      topView.childViews = [];
+      bottomView = new this.MyBottomView({app: this.app});
+      bottomView.$el = $('<div>');
+      bottomView.parentView = topView;
+      topView.childViews.push(bottomView);
+      childViews = topView.getChildViewsByName('my_bottom_view');
+      childViews.should.have.length(1);
+      bottomView.remove()
+      childViews = topView.getChildViewsByName('my_bottom_view');
+      childViews.should.be.empty;
+    });
+
+    it('should not error when removing the currentView', function () {
+      var bottomView, childViews, topView;
+
+      topView = new this.MyTopView({app: this.app});
+      this.app.router.currentView = topView
+      topView.$el = $('<div>');
+      topView.childViews = [];
+
+      expect(topView.remove.bind(topView)).to.not.throw(Error)
+    });
+
+  });
+
+  describe('createChildView', function() {
+
+    var ViewClass, parentView, cb, attachNewChildView;
+
+    beforeEach(function() {
+
+      ViewClass = BaseView.extend({});
+      parentView = 'parentView';
+      cb = sinon.spy();
+      sinon.stub(BaseView, 'attachNewChildView').returns('view');
+
+    });
+
+    afterEach(function() {
+
+      BaseView.attachNewChildView.restore();
+      cb = null;
+
+    });
+
+    it('should call callback with null and view arguments if the view is not yet attached', function() {
+
+      var $el = $('<div>');
+
+      BaseView.createChildView(ViewClass, {app: this.app}, $el, parentView, cb);
+      cb.should.have.been.calledWithExactly(null, 'view');
+
+    });
+
+    it('should call callback with null and null arguments if the view is already attached', function() {
+
+      var $el = $('<div data-view-attached="true"></div>');
+
+      BaseView.createChildView(ViewClass, {app: this.app}, $el, parentView, cb);
+      cb.should.have.been.calledWithExactly(null, null);
+
+    });
+
+  });
+
+  describe('attachNewChildView', function() {
+    var ViewClass, baseView;
+
+    beforeEach(function() {
+      baseView = new BaseView({app: this.app});
+
+      ViewClass = this.MyTopView;
+      sinon.stub(baseView, 'attachOrRender');
+    });
+
+    afterEach(function() {
+      baseView.attachOrRender.restore();
+    });
+
+    it('should create a new instance of ViewClass', function() {
+
+      var newChildView = BaseView.attachNewChildView(ViewClass, {app: this.app}, 'foo', 'bar');
+      expect(newChildView).to.be.an.instanceOf(ViewClass);
     });
   });
 });
