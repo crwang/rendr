@@ -1,6 +1,6 @@
 var _ = require('underscore'),
     express = require('express'),
-    errorHandler = require('errorhandler')
+    errorHandler = require('errorhandler'),
     Router = require('./router'),
     RestAdapter = require('./data_adapter/rest_adapter'),
     ViewEngine = require('./viewEngine'),
